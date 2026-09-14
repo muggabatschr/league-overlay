@@ -68,6 +68,12 @@ Zusätzlich lässt sich per Slider die Deckkraft des Box-Hintergrunds einstellen
 
 ### API-Key
 
+`.env.example` als Vorlage kopieren und den Key eintragen:
+
+```bash
+cp .env.example .env
+```
+
 In `.env` muss ein gültiger Riot-API-Key hinterlegt sein (server-seitig, nicht `NEXT_PUBLIC_`):
 
 ```
