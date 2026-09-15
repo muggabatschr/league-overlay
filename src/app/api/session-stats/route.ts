@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readConfig } from '@/utils/config';
+import { OverlayConfig, readConfig } from '@/utils/config';
 import { MissingApiKeyError } from '@/utils/apiKey';
 import {
   getPuuidByRiotId,
@@ -62,6 +62,8 @@ export interface SessionStats {
   refreshSeconds: number;
   design: string;
   boxOpacity: number;
+  /** When these numbers were actually fetched from Riot (ms since epoch). */
+  fetchedAt: number;
 }
 
 // Master+ hat keine Divisionen mehr.
@@ -80,14 +82,44 @@ const QUEUE_FILTER_PARAMS: Record<string, { queue?: number; type?: string }> = {
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+/**
+ * Last result from Riot, shared by every client.
+ *
+ * The overlay, the control panel and the preview window all poll this route.
+ * Without a cache each of them would hit Riot separately, so the API load
+ * would grow with the number of open windows instead of staying flat.
+ */
+let cache: { key: string; stats: SessionStats } | null = null;
+
+/** Everything that changes which matches are counted — a new value voids the cache. */
+function cacheKey(config: OverlayConfig): string {
+  return [config.riotId, config.platform, config.queueFilter, config.sessionStart].join('|');
+}
+
+export async function GET(request: Request) {
   const config = await readConfig();
+  const force = new URL(request.url).searchParams.get('force') === '1';
 
   if (!config.riotId) {
     return NextResponse.json(
       { error: 'Keine Riot ID hinterlegt — im Control-Panel unter „Spieler“ eintragen.' },
       { status: 400 }
     );
+  }
+
+  const key = cacheKey(config);
+  const maxAge = Math.max(15, config.refreshSeconds) * 1000;
+
+  if (!force && cache?.key === key && Date.now() - cache.stats.fetchedAt < maxAge) {
+    // Design and interval come straight from the config, so changing them in
+    // the control panel takes effect on the next poll instead of waiting for
+    // the cache to expire.
+    return NextResponse.json({
+      ...cache.stats,
+      refreshSeconds: config.refreshSeconds,
+      design: config.design,
+      boxOpacity: config.boxOpacity,
+    } satisfies SessionStats);
   }
 
   try {
@@ -174,8 +206,10 @@ export async function GET() {
       refreshSeconds: config.refreshSeconds,
       design: config.design,
       boxOpacity: config.boxOpacity,
+      fetchedAt: Date.now(),
     };
 
+    cache = { key, stats };
     return NextResponse.json(stats);
   } catch (error) {
     if (error instanceof MissingApiKeyError) {

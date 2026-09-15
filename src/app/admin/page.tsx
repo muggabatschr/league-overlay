@@ -55,6 +55,7 @@ interface ApiKeyStatus {
 }
 
 interface SessionStats {
+  fetchedAt: number;
   wins: number;
   losses: number;
   winRate: number;
@@ -104,6 +105,7 @@ export default function AdminPage() {
   const [config, setConfig] = useState<OverlayConfig | null>(null);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [statsError, setStatsError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
   const [overlayUrl, setOverlayUrl] = useState('');
@@ -114,9 +116,16 @@ export default function AdminPage() {
   const [editingKey, setEditingKey] = useState(false);
   const [confirmKeyRemoval, setConfirmKeyRemoval] = useState(false);
 
-  const loadStats = useCallback(async () => {
+  /**
+   * Loads the session statistics. `force` skips the server-side cache and
+   * pulls fresh numbers from Riot — that is what the refresh button does.
+   */
+  const loadStats = useCallback(async (force = false) => {
+    if (force) setRefreshing(true);
     try {
-      const response = await fetch('/api/session-stats', { cache: 'no-store' });
+      const response = await fetch(`/api/session-stats${force ? '?force=1' : ''}`, {
+        cache: 'no-store',
+      });
       const data = await response.json();
       if (!response.ok) {
         setStats(null);
@@ -127,6 +136,8 @@ export default function AdminPage() {
       setStatsError('');
     } catch {
       setStatsError('Statistiken konnten nicht geladen werden.');
+    } finally {
+      if (force) setRefreshing(false);
     }
   }, []);
 
@@ -191,6 +202,14 @@ export default function AdminPage() {
       setKeyBusy(false);
     }
   };
+
+  // Keep the panel in step with the overlay instead of showing stale numbers.
+  useEffect(() => {
+    if (!config?.riotId) return;
+    const seconds = Math.max(15, config.refreshSeconds);
+    const timer = setInterval(() => loadStats(), seconds * 1000);
+    return () => clearInterval(timer);
+  }, [config?.riotId, config?.refreshSeconds, loadStats]);
 
   useEffect(() => {
     setOverlayUrl(`${window.location.origin}/overlay`);
@@ -424,7 +443,7 @@ export default function AdminPage() {
           </div>
           <div className="space-y-2">
             <label className="block text-sm text-slate-300">
-              Overlay-Aktualisierung (Sekunden, min. 15)
+              Aktualisierungsintervall (Sekunden, min. 15)
             </label>
             <input
               type="number"
@@ -435,6 +454,11 @@ export default function AdminPage() {
               }
               className="w-32 p-2 rounded-lg bg-slate-900 border border-slate-600 focus:border-amber-400 outline-none"
             />
+            <p className="text-xs text-slate-400">
+              Gilt für Overlay und Control-Panel. In diesem Takt wird höchstens einmal gegen die
+              Riot-API geprüft — egal wie viele Fenster offen sind. Ein fertiges Spiel taucht bei
+              Riot ein bis zwei Minuten nach Spielende auf, 60 Sekunden sind also ein guter Wert.
+            </p>
           </div>
         </section>
 
@@ -546,7 +570,33 @@ export default function AdminPage() {
         </section>
 
         <section className="bg-slate-800 rounded-xl p-6 space-y-3 border border-slate-700">
-          <h2 className="text-xl font-semibold">Aktuelle Session-Statistik</h2>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <h2 className="text-xl font-semibold">Aktuelle Session-Statistik</h2>
+            <div className="flex items-center gap-3">
+              {stats && (
+                <span className="text-xs text-slate-400">
+                  Stand{' '}
+                  {new Date(stats.fetchedAt).toLocaleTimeString('de-DE', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}{' '}
+                  Uhr
+                </span>
+              )}
+              <button
+                onClick={() => loadStats(true)}
+                disabled={refreshing || !config.riotId}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 disabled:opacity-50"
+              >
+                {refreshing ? 'Hole Daten…' : 'Jetzt aktualisieren'}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">
+            Aktualisiert sich automatisch alle {Math.max(15, config.refreshSeconds)} Sekunden —
+            direkt nach einem Spiel holt der Button die Daten sofort neu.
+          </p>
           {statsError && <p className="text-red-400 text-sm">{statsError}</p>}
           {stats && (
             <div className="space-y-3">

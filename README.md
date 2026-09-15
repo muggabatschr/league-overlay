@@ -150,6 +150,21 @@ ohne Neuladen der Browser-Quelle:
 Zusätzlich lässt sich die Deckkraft des Box-Hintergrunds einstellen (0–100 %, Standard
 92 %). Schrift, Icons und der goldene Rahmen bleiben davon unberührt.
 
+### Aktualisierung
+
+Overlay und Control-Panel fragen die Statistik im eingestellten Intervall ab (Standard 60 s,
+Minimum 15 s). Serverseitig wird das Ergebnis für dieselbe Dauer zwischengespeichert: Egal wie
+viele Fenster offen sind — Overlay in OBS, Vorschau, Control-Panel — geht pro Intervall
+höchstens **eine** Abfrage an Riot.
+
+Der Button **Jetzt aktualisieren** im Control-Panel umgeht den Cache
+(`/api/session-stats?force=1`) und holt die Daten sofort. Praktisch direkt nach einem Spiel:
+Riot stellt ein beendetes Match ein bis zwei Minuten nach Spielende bereit.
+
+Design und Deckkraft werden auch bei einem Cache-Treffer immer frisch aus der Konfiguration
+gelesen, Änderungen daran wirken also sofort. Der Cache verfällt zusätzlich sofort, wenn sich
+Riot ID, Region, Spielmodus oder Session-Start ändern.
+
 ### Session-Logik
 
 Das Overlay zählt alle Matches, die nach dem eingestellten Session-Start begonnen wurden
