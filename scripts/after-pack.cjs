@@ -22,6 +22,8 @@ exports.default = async function afterPack(context) {
   }
 
   fs.rmSync(target, { recursive: true, force: true });
+  // The bundle is already free of symlinks (see scripts/prepare-standalone.mjs),
+  // so a plain recursive copy is enough here.
   fs.cpSync(source, target, { recursive: true });
 
   const moduleCount = fs.readdirSync(path.join(target, 'node_modules')).length;
