@@ -1,6 +1,6 @@
 {
   "name": "league-overlay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Session-Statistik-Overlay für League of Legends in Streamlabs und OBS",
   "author": "muggabatschr <michaelh84@web.de>",
