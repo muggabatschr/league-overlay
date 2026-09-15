@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Summoner, Match } from '@/types/league';
-
-const RIOT_API_KEY = process.env.RIOT_API_KEY || process.env.NEXT_PUBLIC_RIOT_API_KEY;
+import { getRiotApiKey } from '@/utils/apiKey';
 
 /** Maps a platform routing value (summoner-v4) to its regional routing value (match-v5 / account-v1). */
 const PLATFORM_TO_REGION: Record<string, string> = {
@@ -27,13 +26,65 @@ export function regionForPlatform(platform: string): string {
   return PLATFORM_TO_REGION[platform] ?? 'europe';
 }
 
-function riotClient(host: string) {
+/**
+ * Builds a Riot client for a routing host. The key is resolved per call, so a
+ * key saved in the control panel takes effect without restarting the server.
+ */
+async function riotClient(host: string) {
+  const apiKey = await getRiotApiKey();
   return axios.create({
     baseURL: `https://${host}.api.riotgames.com`,
     headers: {
-      'X-Riot-Token': RIOT_API_KEY,
+      'X-Riot-Token': apiKey,
     },
   });
+}
+
+export type ApiKeyCheck =
+  | { valid: true }
+  | { valid: false; reason: 'invalid' | 'rate-limited' | 'unreachable'; message: string };
+
+/**
+ * Checks a key against the Riot platform-status endpoint — the cheapest call
+ * that still requires authentication — without touching the stored key.
+ */
+export async function checkApiKey(apiKey: string, platform = 'euw1'): Promise<ApiKeyCheck> {
+  try {
+    await axios.get(`https://${platform}.api.riotgames.com/lol/status/v4/platform-data`, {
+      headers: { 'X-Riot-Token': apiKey },
+      timeout: 10_000,
+    });
+    return { valid: true };
+  } catch (error) {
+    if (!axios.isAxiosError(error) || !error.response) {
+      return {
+        valid: false,
+        reason: 'unreachable',
+        message: 'Riot-API nicht erreichbar — Internetverbindung prüfen und erneut versuchen.',
+      };
+    }
+    const status = error.response.status;
+    if (status === 401 || status === 403) {
+      return {
+        valid: false,
+        reason: 'invalid',
+        message:
+          'Key wurde von Riot abgelehnt (ungültig oder abgelaufen). Development-Keys laufen nach 24 Stunden ab.',
+      };
+    }
+    if (status === 429) {
+      return {
+        valid: false,
+        reason: 'rate-limited',
+        message: 'Rate-Limit der Riot-API erreicht — bitte in einer Minute erneut prüfen.',
+      };
+    }
+    return {
+      valid: false,
+      reason: 'unreachable',
+      message: `Riot-API antwortete mit HTTP ${status}. Bitte später erneut versuchen.`,
+    };
+  }
 }
 
 const puuidCache = new Map<string, string>();
@@ -46,7 +97,7 @@ export const getPuuidByRiotId = async (riotId: string, platform = 'euw1'): Promi
   if (!gameName || !tagLine) {
     throw new Error(`Invalid Riot ID "${riotId}" — expected format "GameName#TAG"`);
   }
-  const response = await riotClient(regionForPlatform(platform)).get(
+  const response = await (await riotClient(regionForPlatform(platform))).get(
     `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
   );
   puuidCache.set(riotId, response.data.puuid);
@@ -55,7 +106,7 @@ export const getPuuidByRiotId = async (riotId: string, platform = 'euw1'): Promi
 
 export const getSummonerByName = async (riotId: string, platform = 'euw1'): Promise<Summoner> => {
   const puuid = await getPuuidByRiotId(riotId, platform);
-  const response = await riotClient(platform).get(`/lol/summoner/v4/summoners/by-puuid/${puuid}`);
+  const response = await (await riotClient(platform)).get(`/lol/summoner/v4/summoners/by-puuid/${puuid}`);
   return response.data;
 };
 
@@ -74,7 +125,7 @@ export const getMatchHistory = async (
   puuid: string,
   { count = 10, startTime, queue, type, platform = 'euw1' }: MatchHistoryOptions = {}
 ): Promise<string[]> => {
-  const response = await riotClient(regionForPlatform(platform)).get(
+  const response = await (await riotClient(regionForPlatform(platform))).get(
     `/lol/match/v5/matches/by-puuid/${puuid}/ids`,
     {
       params: {
@@ -96,7 +147,7 @@ export const getMatchDetails = async (matchId: string, platform = 'euw1'): Promi
   const cached = matchCache.get(matchId);
   if (cached) return cached;
 
-  const response = await riotClient(regionForPlatform(platform)).get(`/lol/match/v5/matches/${matchId}`);
+  const response = await (await riotClient(regionForPlatform(platform))).get(`/lol/match/v5/matches/${matchId}`);
   matchCache.set(matchId, response.data);
   return response.data;
 };
@@ -112,7 +163,7 @@ export interface LeagueEntry {
 }
 
 export const getLeagueEntries = async (puuid: string, platform = 'euw1'): Promise<LeagueEntry[]> => {
-  const response = await riotClient(platform).get(`/lol/league/v4/entries/by-puuid/${puuid}`);
+  const response = await (await riotClient(platform)).get(`/lol/league/v4/entries/by-puuid/${puuid}`);
   return response.data;
 };
 

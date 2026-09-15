@@ -44,5 +44,10 @@ next-env.d.ts
 # overlay config
 /data
 
+# desktop build
+/electron-dist
+/release
+/build/icon.ico
+
 # IDE
 /.idea

@@ -1,0 +1,44 @@
+appId: de.muggabatschr.league-overlay
+productName: League Overlay
+copyright: © muggabatschr
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the Electron shell goes into the asar — the Next.js server ships as a
+# separate resource with its own traced node_modules.
+files:
+  - electron/**/*
+  - build/icon.ico
+  - package.json
+  - '!node_modules/**/*'
+  - '!src/**/*'
+  - '!.next/**/*'
+  - '!electron-dist/**/*'
+  - '!release/**/*'
+  - '!scripts/**/*'
+  - '!data/**/*'
+
+# The Next.js server bundle is copied in by scripts/after-pack.cjs — see the
+# comment there for why extraResources cannot do it.
+afterPack: scripts/after-pack.cjs
+
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: LeagueOverlay-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: League Overlay
+  uninstallDisplayName: League Overlay ${version}
+  deleteAppDataOnUninstall: false

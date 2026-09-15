@@ -1,0 +1,72 @@
+name: Windows-Installer
+
+# Manuell auslösbar und automatisch bei einem Versions-Tag (z. B. v1.0.0),
+# das zusätzlich ein GitHub-Release mit dem Setup anlegt.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      # Der Tag bestimmt die Version von Setup, Exe und Release.
+      - name: Version aus Tag übernehmen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.argv[1];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          " "$version"
+          echo "Version: $version"
+
+      - name: App-Icon erzeugen
+        run: pnpm run icon
+
+      - name: Next.js-Server bauen und bündeln
+        run: pnpm run build:server
+
+      - name: Installer bauen
+        run: pnpm exec electron-builder --win --publish never
+
+      - name: Setup als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: league-overlay-setup
+          path: release/*.exe
+          if-no-files-found: error
+
+      - name: Release veröffentlichen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe
+          body: |
+            Windows-Installer für League Overlay ${{ github.ref_name }}.
+
+            Der Installer ist nicht signiert — Windows SmartScreen meldet sich beim
+            ersten Start mit „Weitere Informationen“ → „Trotzdem ausführen“.
+
+            Nach der Installation im Control-Panel den Riot-API-Key eintragen.

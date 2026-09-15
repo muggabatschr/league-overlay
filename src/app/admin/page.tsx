@@ -45,6 +45,15 @@ const DESIGNS = [
   },
 ];
 
+interface ApiKeyStatus {
+  configured: boolean;
+  source: 'stored' | 'env' | 'none';
+  /** First and last 5 characters, everything in between replaced by `*`. */
+  masked: string;
+  validatedAt: number | null;
+  check?: { valid: boolean; message: string };
+}
+
 interface SessionStats {
   wins: number;
   losses: number;
@@ -98,6 +107,12 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
   const [overlayUrl, setOverlayUrl] = useState('');
+  const [keyStatus, setKeyStatus] = useState<ApiKeyStatus | null>(null);
+  const [keyInput, setKeyInput] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyMessage, setKeyMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editingKey, setEditingKey] = useState(false);
+  const [confirmKeyRemoval, setConfirmKeyRemoval] = useState(false);
 
   const loadStats = useCallback(async () => {
     try {
@@ -115,15 +130,78 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadKeyStatus = useCallback(async () => {
+    const response = await fetch('/api/riot-key', { cache: 'no-store' });
+    const data: ApiKeyStatus = await response.json();
+    setKeyStatus(data);
+    // Without a key nothing else on this page can work — open the input right away.
+    setEditingKey(!data.configured);
+    return data;
+  }, []);
+
+  const saveApiKey = async () => {
+    setKeyBusy(true);
+    setKeyMessage(null);
+    try {
+      const response = await fetch('/api/riot-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: keyInput }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setKeyMessage({ ok: false, text: data.error ?? 'Key konnte nicht geprüft werden.' });
+        return;
+      }
+      setKeyStatus(data);
+      setKeyInput('');
+      setEditingKey(false);
+      setKeyMessage({ ok: true, text: data.check?.message ?? 'Key gespeichert.' });
+      await loadStats();
+    } catch {
+      setKeyMessage({ ok: false, text: 'Key konnte nicht geprüft werden — läuft der Overlay-Dienst?' });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const recheckApiKey = async () => {
+    setKeyBusy(true);
+    setKeyMessage(null);
+    try {
+      const response = await fetch('/api/riot-key?check=1', { cache: 'no-store' });
+      const data: ApiKeyStatus = await response.json();
+      setKeyStatus(data);
+      if (data.check) setKeyMessage({ ok: data.check.valid, text: data.check.message });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const removeApiKey = async () => {
+    setKeyBusy(true);
+    setKeyMessage(null);
+    try {
+      const response = await fetch('/api/riot-key', { method: 'DELETE' });
+      setKeyStatus(await response.json());
+      setConfirmKeyRemoval(false);
+      setEditingKey(true);
+      setKeyMessage({ ok: true, text: 'Key entfernt.' });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
   useEffect(() => {
     setOverlayUrl(`${window.location.origin}/overlay`);
+    loadKeyStatus();
     fetch('/api/config')
       .then((r) => r.json())
       .then((c: OverlayConfig) => {
         setConfig(c);
         if (c.riotId) loadStats();
       });
-  }, [loadStats]);
+  }, [loadStats, loadKeyStatus]);
 
   const save = async (update: Partial<OverlayConfig>) => {
     if (!config) return;
@@ -152,6 +230,130 @@ export default function AdminPage() {
     <main className="min-h-screen p-8 bg-slate-900 text-slate-100">
       <div className="max-w-2xl mx-auto space-y-8">
         <h1 className="text-3xl font-bold text-amber-300">Overlay-Backend</h1>
+
+        <section className="bg-slate-800 rounded-xl p-6 space-y-4 border border-slate-700">
+          <h2 className="text-xl font-semibold">Riot API-Key</h2>
+
+          {keyStatus?.configured && !editingKey ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-emerald-400 text-lg">✓</span>
+                <code className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-amber-300 font-mono text-sm break-all">
+                  {keyStatus.masked}
+                </code>
+                <span className="text-xs text-slate-400">
+                  {keyStatus.source === 'env'
+                    ? 'aus .env übernommen'
+                    : 'in der App gespeichert'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Es werden nur die ersten und letzten 5 Zeichen angezeigt — der vollständige Key
+                bleibt auch beim Streamen oder Teilen des Bildschirms verborgen.
+                {keyStatus.validatedAt
+                  ? ` Zuletzt geprüft: ${new Date(keyStatus.validatedAt).toLocaleString('de-DE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })} Uhr.`
+                  : ''}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    setEditingKey(true);
+                    setConfirmKeyRemoval(false);
+                    setKeyMessage(null);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                >
+                  Key ersetzen
+                </button>
+                <button
+                  onClick={recheckApiKey}
+                  disabled={keyBusy}
+                  className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {keyBusy ? 'Prüfe…' : 'Erneut prüfen'}
+                </button>
+                {keyStatus.source === 'stored' &&
+                  (confirmKeyRemoval ? (
+                    <button
+                      onClick={removeApiKey}
+                      disabled={keyBusy}
+                      className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50"
+                    >
+                      Wirklich entfernen?
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmKeyRemoval(true)}
+                      className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-red-300"
+                    >
+                      Entfernen
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-400">
+                Der Key wird sofort gegen die Riot-API geprüft und nur gespeichert, wenn Riot ihn
+                akzeptiert. Development-Keys von{' '}
+                <a
+                  href="https://developer.riotgames.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-300 underline"
+                >
+                  developer.riotgames.com
+                </a>{' '}
+                laufen nach 24 Stunden ab und müssen dann hier neu eingetragen werden.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && keyInput.trim() && !keyBusy) saveApiKey();
+                  }}
+                  placeholder="RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="flex-1 min-w-64 p-2 rounded-lg bg-slate-900 border border-slate-600 font-mono focus:border-amber-400 outline-none"
+                />
+                <button
+                  onClick={saveApiKey}
+                  disabled={keyBusy || !keyInput.trim()}
+                  className="px-4 py-2 rounded-lg bg-amber-500 text-slate-900 font-semibold hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {keyBusy ? 'Prüfe…' : 'Prüfen & speichern'}
+                </button>
+                {keyStatus?.configured && (
+                  <button
+                    onClick={() => {
+                      setEditingKey(false);
+                      setKeyInput('');
+                      setKeyMessage(null);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                  >
+                    Abbrechen
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {keyMessage && (
+            <p className={`text-sm ${keyMessage.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+              {keyMessage.text}
+            </p>
+          )}
+        </section>
 
         <section className="bg-slate-800 rounded-xl p-6 space-y-4 border border-slate-700">
           <h2 className="text-xl font-semibold">Spieler</h2>

@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { dataDir } from './paths';
 
 export type OverlayDesign = 'A' | 'B' | 'C' | 'D';
 
@@ -22,8 +23,7 @@ export interface OverlayConfig {
   boxOpacity: number;
 }
 
-const CONFIG_DIR = path.join(process.cwd(), 'data');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'overlay-config.json');
+const configFile = () => path.join(dataDir(), 'overlay-config.json');
 
 const DEFAULT_CONFIG: OverlayConfig = {
   riotId: '',
@@ -37,7 +37,7 @@ const DEFAULT_CONFIG: OverlayConfig = {
 
 export async function readConfig(): Promise<OverlayConfig> {
   try {
-    const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
+    const raw = await fs.readFile(configFile(), 'utf-8');
     return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -47,7 +47,7 @@ export async function readConfig(): Promise<OverlayConfig> {
 export async function writeConfig(update: Partial<OverlayConfig>): Promise<OverlayConfig> {
   const current = await readConfig();
   const next: OverlayConfig = { ...current, ...update };
-  await fs.mkdir(CONFIG_DIR, { recursive: true });
-  await fs.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');
+  await fs.mkdir(dataDir(), { recursive: true });
+  await fs.writeFile(configFile(), JSON.stringify(next, null, 2), 'utf-8');
   return next;
 }

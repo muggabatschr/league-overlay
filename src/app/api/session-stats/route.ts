@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readConfig } from '@/utils/config';
+import { MissingApiKeyError } from '@/utils/apiKey';
 import {
   getPuuidByRiotId,
   getMatchHistory,
@@ -84,7 +85,7 @@ export async function GET() {
 
   if (!config.riotId) {
     return NextResponse.json(
-      { error: 'No Riot ID configured. Set one on the /admin page.' },
+      { error: 'Keine Riot ID hinterlegt — im Control-Panel unter „Spieler“ eintragen.' },
       { status: 400 }
     );
   }
@@ -177,9 +178,12 @@ export async function GET() {
 
     return NextResponse.json(stats);
   } catch (error) {
+    if (error instanceof MissingApiKeyError) {
+      return NextResponse.json({ error: error.message, missingApiKey: true }, { status: 400 });
+    }
     console.error('Error building session stats:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch session stats (check API key and Riot ID)' },
+      { error: 'Statistiken konnten nicht geladen werden — API-Key und Riot ID prüfen.' },
       { status: 500 }
     );
   }
