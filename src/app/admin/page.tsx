@@ -20,6 +20,7 @@ const QUEUE_FILTERS = [
   { value: 'aram-mayhem', label: 'ARAM: Mayhem' },
   { value: 'normal', label: 'Normal (Draft/Blind/Swiftplay)' },
   { value: 'arena', label: 'Arena' },
+  { value: 'classic', label: 'League Classic' },
 ];
 
 const DESIGNS = [
@@ -410,8 +411,9 @@ export default function AdminPage() {
               ))}
             </select>
             <p className="text-xs text-slate-400">
-              Bestimmt, welche Spiele für die Session zählen. Bei „Ranked Flex“ wird auch die
-              Season-Statistik der Flex-Queue angezeigt, sonst Solo/Duo (falls vorhanden).
+              Bestimmt, welche Spiele für die Session zählen. Der Rang passt zum Modus: Solo/Duo
+              bzw. Flex zeigen ihren eigenen Rang, „Alle Modi“ den Solo/Duo-Rang (sonst Flex).
+              Modi ohne Ranked-Queue wie ARAM, Normal, Arena oder League Classic zeigen keinen Rang.
             </p>
           </div>
         </section>

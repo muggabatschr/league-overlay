@@ -4,7 +4,7 @@ import { dataDir } from './paths';
 
 export type OverlayDesign = 'A' | 'B' | 'C' | 'D';
 
-export type QueueFilter = 'all' | 'solo' | 'flex' | 'aram' | 'aram-mayhem' | 'normal' | 'arena';
+export type QueueFilter = 'all' | 'solo' | 'flex' | 'aram' | 'aram-mayhem' | 'normal' | 'arena' | 'classic';
 
 export interface OverlayConfig {
   /** Riot ID in the form "GameName#TAG" */

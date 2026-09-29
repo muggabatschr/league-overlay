@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       update.refreshSeconds = body.refreshSeconds;
     }
     if (['A', 'B', 'C', 'D'].includes(body.design)) update.design = body.design;
-    if (['all', 'solo', 'flex', 'aram', 'aram-mayhem', 'normal', 'arena'].includes(body.queueFilter)) {
+    if (['all', 'solo', 'flex', 'aram', 'aram-mayhem', 'normal', 'arena', 'classic'].includes(body.queueFilter)) {
       update.queueFilter = body.queueFilter;
     }
     if (typeof body.boxOpacity === 'number' && body.boxOpacity >= 0 && body.boxOpacity <= 100) {

@@ -132,10 +132,17 @@ git push origin v1.0.0
 ### Spielmodus-Filter
 
 Im Control-Panel lässt sich wählen, welcher Spielmodus für die Session zählt: Alle Modi,
-Ranked Solo/Duo, Ranked Flex, ARAM, ARAM: Mayhem, Normal (Draft/Blind/Swiftplay) oder
-Arena. Der Filter wird über den `queue`/`type`-Parameter der Match-V5-API angewendet. Bei
-„Ranked Flex“ zeigt der Season-Block die Flex-Statistik, sonst Solo/Duo (Fallback Flex,
-falls kein Solo-Rank vorhanden).
+Ranked Solo/Duo, Ranked Flex, ARAM, ARAM: Mayhem, Normal (Draft/Blind/Swiftplay), Arena
+oder League Classic. Der Filter wird über den `queue`/`type`-Parameter der Match-V5-API
+angewendet. League Classic läuft über mehrere Queues (Draft, Co-op vs. KI, intern „Jade“);
+dafür holt der Server alle Spiele der Session und filtert anschließend nach Queue-ID.
+Classic-Champions haben eigene IDs ab 60000 — ihre Icons kommen von CommunityDragon statt
+Data Dragon.
+
+Der Season-Block passt immer zum Modus: „Ranked Solo/Duo“ und „Ranked Flex“ zeigen ihren
+eigenen Rang, „Alle Modi“ den Solo/Duo-Rang (Fallback Flex). Modi ohne Ranked-Queue (ARAM,
+ARAM: Mayhem, Normal, Arena, League Classic) zeigen keinen Rang. Das Overlay blendet den
+Block dann aus.
 
 ### Overlay-Designs
 

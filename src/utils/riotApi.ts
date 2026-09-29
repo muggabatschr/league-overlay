@@ -27,17 +27,69 @@ export function regionForPlatform(platform: string): string {
 }
 
 /**
+ * Development keys allow 20 requests per second. A session with many games
+ * would otherwise fire all match-detail requests at once and get a 429, so
+ * only a few requests are in flight at any time.
+ */
+const MAX_CONCURRENT_REQUESTS = 4;
+let activeRequests = 0;
+const waitingRequests: (() => void)[] = [];
+
+async function acquireSlot(): Promise<void> {
+  if (activeRequests < MAX_CONCURRENT_REQUESTS) {
+    activeRequests++;
+    return;
+  }
+  // The slot is handed over directly by releaseSlot, so the count stays the same.
+  await new Promise<void>((resolve) => waitingRequests.push(resolve));
+}
+
+function releaseSlot(): void {
+  const next = waitingRequests.shift();
+  if (next) next();
+  else activeRequests--;
+}
+
+/** Longest Retry-After we wait for inside a request; anything longer fails and the next poll retries. */
+const MAX_RETRY_AFTER_SECONDS = 10;
+const MAX_RETRIES = 2;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * Builds a Riot client for a routing host. The key is resolved per call, so a
  * key saved in the control panel takes effect without restarting the server.
  */
 async function riotClient(host: string) {
   const apiKey = await getRiotApiKey();
-  return axios.create({
+  const client = axios.create({
     baseURL: `https://${host}.api.riotgames.com`,
     headers: {
       'X-Riot-Token': apiKey,
     },
   });
+
+  const get = client.get.bind(client);
+  client.get = (async (...args: Parameters<typeof get>) => {
+    for (let attempt = 0; ; attempt++) {
+      await acquireSlot();
+      let retryAfter: number;
+      try {
+        return await get(...args);
+      } catch (error) {
+        if (!axios.isAxiosError(error) || error.response?.status !== 429 || attempt >= MAX_RETRIES) {
+          throw error;
+        }
+        retryAfter = Number(error.response.headers['retry-after'] ?? 1);
+        if (!(retryAfter <= MAX_RETRY_AFTER_SECONDS)) throw error;
+      } finally {
+        releaseSlot();
+      }
+      await sleep(retryAfter * 1000);
+    }
+  }) as typeof client.get;
+
+  return client;
 }
 
 export type ApiKeyCheck =
